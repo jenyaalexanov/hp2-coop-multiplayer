@@ -4,6 +4,12 @@ Harry Potter and the Chamber of Secrets — PC Co-op / Multiplayer Mod
 
 Cooperative multiplayer for the PC version of **Harry Potter and the Chamber of Secrets** (UE1 / Metallicafan212 **M212** engine). Two game instances sync Harry's position, rotation, velocity, animations, health, map travel, spell projectiles, prop pickups, and lumos secret triggers over UDP. The remote player is rendered as a ghost puppet (no collision — won't trip level triggers).
 
+## See it in action
+
+| Example 1 | Example 2 |
+|-----------|-----------|
+| [![Co-op gameplay example 1](https://img.youtube.com/vi/kiR5CuYrhQg/hqdefault.jpg)](https://www.youtube.com/shorts/kiR5CuYrhQg) | [![Co-op gameplay example 2](https://img.youtube.com/vi/Wqgok-42T3g/hqdefault.jpg)](https://www.youtube.com/shorts/Wqgok-42T3g) |
+
 ## Legal Disclaimer
 
 This is a non-profit, fan-made open-source project.
