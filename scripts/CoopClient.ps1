@@ -1,4 +1,4 @@
-# LAN/Internet client: connect to host (fullscreen, max primary display)
+# LAN/Internet client: connect to host (uses the game's own video settings)
 # Usage: CoopClient.ps1 <hostIp> [port] [playerName]
 
 param(
@@ -36,6 +36,6 @@ Write-CoopIni -Path (Join-Path $docs "HP2Coop.ini") -LastHost $HostIp -LastPort 
 Write-CoopIni -Path (Join-Path $gameRoot "instances\P2\System\HP2Coop.ini") -LastHost $HostIp -LastPort $portNum -PlayerName $PlayerName -WasHost $false
 
 Clear-RunningLock "P2"
-Start-GameInstance -GameRoot $gameRoot -PlayerId "P2" -WindowTitle "HP2 Coop Client" -Map $map -DisplayMode Fullscreen
+Start-GameInstance -GameRoot $gameRoot -PlayerId "P2" -WindowTitle "HP2 Coop Client" -Map $map -DisplayMode Default
 
 Write-Host "Connecting to ${HostIp}:$portNum as $PlayerName..."

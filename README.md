@@ -87,7 +87,7 @@ Host.bat [port] [playerName]
 REM default: port from config.json (7777), name Host
 ```
 
-Launches **fullscreen** at the primary display’s current resolution.
+The game launches with **its own video settings** (resolution / windowed / fullscreen as configured in the game). We don’t touch them.
 
 Open **UDP** on that port in Windows Firewall (and router port-forward for Internet). Or use ZeroTier / Radmin VPN and share the VPN IP.
 
@@ -98,7 +98,7 @@ Join.bat <hostIp> [port] [playerName]
 REM example: Join.bat 192.168.1.10 7777 Hermione
 ```
 
-Also **fullscreen** at the primary display’s resolution. If you run `Join.bat` with no arguments, it will ask for the host IP.
+Also uses the game’s own video settings. If you run `Join.bat` with no arguments, it will ask for the host IP.
 
 Both players should load the **same map**. The puppet is only shown while maps match. When one player changes map, the other **auto-follows** (a joining client is pulled onto the host's current map).
 

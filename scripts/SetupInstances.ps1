@@ -143,8 +143,9 @@ foreach ($p in $players) {
         }
     }
 
-    Set-GameDisplayIni -Path $instDefaultIni -UserFolder $p.UserFolder -Mode Windowed -Width 960 -Height 540
-    Set-GameDisplayIni -Path $instGameIni -UserFolder $p.UserFolder -Mode Windowed -Width 960 -Height 540
+    # Isolate per-instance saves/settings; leave video/display settings as installed.
+    Set-GameUserFolder -Path $instDefaultIni -UserFolder $p.UserFolder
+    Set-GameUserFolder -Path $instGameIni -UserFolder $p.UserFolder
 
     $doc = Join-Path $env:USERPROFILE "Documents\$($p.UserFolder)"
     New-Item -ItemType Directory -Path "$doc\Save", "$doc\Logs" -Force | Out-Null
@@ -152,7 +153,7 @@ foreach ($p in $players) {
     if (-not (Test-Path -LiteralPath $hp)) {
         Copy-Item -LiteralPath $instGameIni -Destination $hp -Force
     }
-    Set-GameDisplayIni -Path $hp -UserFolder $p.UserFolder -Mode Windowed -Width 960 -Height 540
+    Set-GameUserFolder -Path $hp -UserFolder $p.UserFolder
     $docUser = Join-Path $doc "User.ini"
     if (-not (Test-Path -LiteralPath $docUser)) {
         if (Test-Path -LiteralPath $instUserIni) {

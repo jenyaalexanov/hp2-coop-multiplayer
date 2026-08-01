@@ -183,12 +183,84 @@ function Require-Administrator {
 }
 
 function Get-PrimaryDisplaySize {
-    Add-Type -AssemblyName System.Windows.Forms
-    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    return @{
-        Width  = [int]$bounds.Width
-        Height = [int]$bounds.Height
+    # Physical pixels, not DPI-scaled. At 125% DPI, Forms/EnumDisplaySettings report
+    # 2752x1152 for a real 3440x1440 panel — game then opens a smaller window on one side.
+    # GetDeviceCaps(DESKTOP*) returns the real framebuffer size.
+    if (-not ("HP2CoopDisplay" -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class HP2CoopDisplay {
+    [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+    [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int index);
+    public const int HORZRES = 8;
+    public const int VERTRES = 10;
+    public const int DESKTOPHORZRES = 118;
+    public const int DESKTOPVERTRES = 117;
+}
+"@
     }
+
+    $width = 0
+    $height = 0
+    $hdc = [HP2CoopDisplay]::GetDC([IntPtr]::Zero)
+    try {
+        $width = [HP2CoopDisplay]::GetDeviceCaps($hdc, [HP2CoopDisplay]::DESKTOPHORZRES)
+        $height = [HP2CoopDisplay]::GetDeviceCaps($hdc, [HP2CoopDisplay]::DESKTOPVERTRES)
+        if ($width -le 0 -or $height -le 0) {
+            $width = [HP2CoopDisplay]::GetDeviceCaps($hdc, [HP2CoopDisplay]::HORZRES)
+            $height = [HP2CoopDisplay]::GetDeviceCaps($hdc, [HP2CoopDisplay]::VERTRES)
+        }
+    }
+    finally {
+        [void][HP2CoopDisplay]::ReleaseDC([IntPtr]::Zero, $hdc)
+    }
+
+    if ($width -le 0 -or $height -le 0) {
+        Add-Type -AssemblyName System.Windows.Forms
+        $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $width = [int]$bounds.Width
+        $height = [int]$bounds.Height
+    }
+
+    return @{
+        Width  = [int]$width
+        Height = [int]$height
+    }
+}
+
+function Set-GameUserFolder {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$UserFolder
+    )
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    $enc = [Text.Encoding]::Default
+    $lines = [System.Collections.Generic.List[string]]([IO.File]::ReadAllLines($Path, $enc))
+    $inCore = $false
+    $have = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\[') { $inCore = $false }
+        if ($lines[$i] -match '^\[Core\.System\]') { $inCore = $true; continue }
+        if (-not $inCore) { continue }
+        if ($lines[$i] -match '^\s*UserFolder=') {
+            $lines[$i] = "UserFolder=$UserFolder"
+            $have = $true
+        }
+        elseif ($lines[$i] -match '^\s*SavePath=') {
+            $lines[$i] = "SavePath=$env:USERPROFILE\Documents\$UserFolder\Save"
+        }
+    }
+    if (-not $have) {
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\[Core\.System\]') {
+                $lines.Insert($i + 1, "UserFolder=$UserFolder")
+                break
+            }
+        }
+    }
+    [IO.File]::WriteAllLines($Path, $lines.ToArray(), $enc)
 }
 
 function Set-GameDisplayIni {
@@ -204,83 +276,163 @@ function Set-GameDisplayIni {
     }
 
     $fullscreen = ($Mode -eq "Fullscreen")
+    # M212/DX11 on Win10/11: borderless + native physical res is the reliable fullscreen.
+    # CenterBorderlessWindow keeps the window on-screen when sizes disagree briefly.
     $startupFs = if ($fullscreen) { "True" } else { "False" }
+    $borderless = if ($fullscreen) { "True" } else { "False" }
+    $centerBorderless = if ($fullscreen) { "True" } else { "False" }
     $capture = if ($fullscreen) { "True" } else { "False" }
+
+    $displayKeyPattern = '^\s*;?\s*(WindowedViewportX|WindowedViewportY|FullscreenViewportX|FullscreenViewportY|StartupFullscreen|BorderlessFullscreen|CenterBorderlessWindow|UseFullscreenCursorInBorderless|CaptureMouse)\s*='
 
     $enc = [Text.Encoding]::Default
     $lines = [System.Collections.Generic.List[string]]([IO.File]::ReadAllLines($Path, $enc))
-    $inWin = $false
-    $inCore = $false
-    $winSectionIdx = -1
-    $have = @{
-        WindowedViewportX                 = $false
-        WindowedViewportY                 = $false
-        FullscreenViewportX               = $false
-        FullscreenViewportY               = $false
-        StartupFullscreen                 = $false
-        BorderlessFullscreen              = $false
-        CenterBorderlessWindow            = $false
-        UseFullscreenCursorInBorderless   = $false
-        CaptureMouse                      = $false
-        UserFolder                        = $false
-        SavePath                          = $false
-    }
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -match '^\[') { $inWin = $false; $inCore = $false }
-        if ($lines[$i] -match '^\[WinDrv\.WindowsClient\]') {
-            $inWin = $true
-            $winSectionIdx = $i
-        }
-        if ($lines[$i] -match '^\[Core\.System\]') { $inCore = $true }
-
-        if ($inCore -and $UserFolder -and $lines[$i] -match '^UserFolder=') {
-            $lines[$i] = "UserFolder=$UserFolder"
-            $have.UserFolder = $true
-        }
-        if ($inCore -and $UserFolder -and $lines[$i] -match '^SavePath=') {
-            $lines[$i] = "SavePath=$env:USERPROFILE\Documents\$UserFolder\Save"
-            $have.SavePath = $true
-        }
-
-        if (-not $inWin) { continue }
-
-        if ($lines[$i] -match '^;?\s*WindowedViewportX=') { $lines[$i] = "WindowedViewportX=$Width"; $have.WindowedViewportX = $true }
-        elseif ($lines[$i] -match '^;?\s*WindowedViewportY=') { $lines[$i] = "WindowedViewportY=$Height"; $have.WindowedViewportY = $true }
-        elseif ($lines[$i] -match '^;?\s*FullscreenViewportX=') { $lines[$i] = "FullscreenViewportX=$Width"; $have.FullscreenViewportX = $true }
-        elseif ($lines[$i] -match '^;?\s*FullscreenViewportY=') { $lines[$i] = "FullscreenViewportY=$Height"; $have.FullscreenViewportY = $true }
-        elseif ($lines[$i] -match '^;?\s*StartupFullscreen=') { $lines[$i] = "StartupFullscreen=$startupFs"; $have.StartupFullscreen = $true }
-        elseif ($lines[$i] -match '^;?\s*BorderlessFullscreen=') { $lines[$i] = "BorderlessFullscreen=False"; $have.BorderlessFullscreen = $true }
-        elseif ($lines[$i] -match '^;?\s*CenterBorderlessWindow=') { $lines[$i] = "CenterBorderlessWindow=False"; $have.CenterBorderlessWindow = $true }
-        elseif ($lines[$i] -match '^;?\s*UseFullscreenCursorInBorderless=') { $lines[$i] = "UseFullscreenCursorInBorderless=False"; $have.UseFullscreenCursorInBorderless = $true }
-        elseif ($lines[$i] -match '^;?\s*CaptureMouse=') { $lines[$i] = "CaptureMouse=$capture"; $have.CaptureMouse = $true }
-    }
-
-    if ($winSectionIdx -ge 0) {
-        $insertAt = $winSectionIdx + 1
-        $toInsert = @()
-        if (-not $have.FullscreenViewportX) { $toInsert += "FullscreenViewportX=$Width" }
-        if (-not $have.FullscreenViewportY) { $toInsert += "FullscreenViewportY=$Height" }
-        if (-not $have.WindowedViewportX) { $toInsert += "WindowedViewportX=$Width" }
-        if (-not $have.WindowedViewportY) { $toInsert += "WindowedViewportY=$Height" }
-        if (-not $have.StartupFullscreen) { $toInsert += "StartupFullscreen=$startupFs" }
-        if (-not $have.BorderlessFullscreen) { $toInsert += "BorderlessFullscreen=False" }
-        if (-not $have.CaptureMouse) { $toInsert += "CaptureMouse=$capture" }
-        for ($j = $toInsert.Count - 1; $j -ge 0; $j--) {
-            $lines.Insert($insertAt, $toInsert[$j])
-        }
-    }
-
-    if ($UserFolder -and -not ($lines | Where-Object { $_ -match '^UserFolder=' })) {
+    # Patch UserFolder / SavePath in [Core.System]
+    if ($UserFolder) {
+        $inCore = $false
+        $haveUserFolder = $false
         for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match '^\[Core\.System\]') {
-                $lines.Insert($i + 1, "UserFolder=$UserFolder")
+            if ($lines[$i] -match '^\[') { $inCore = $false }
+            if ($lines[$i] -match '^\[Core\.System\]') { $inCore = $true; continue }
+            if (-not $inCore) { continue }
+            if ($lines[$i] -match '^\s*UserFolder=') {
+                $lines[$i] = "UserFolder=$UserFolder"
+                $haveUserFolder = $true
+            }
+            elseif ($lines[$i] -match '^\s*SavePath=') {
+                $lines[$i] = "SavePath=$env:USERPROFILE\Documents\$UserFolder\Save"
+            }
+        }
+        if (-not $haveUserFolder) {
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -match '^\[Core\.System\]') {
+                    $lines.Insert($i + 1, "UserFolder=$UserFolder")
+                    break
+                }
+            }
+        }
+    }
+
+    # Rewrite display keys in viewport client sections. Strip old/commented duplicates,
+    # then insert one clean authoritative block at the top of each section.
+    $block = @(
+        "WindowedViewportX=$Width"
+        "WindowedViewportY=$Height"
+        "FullscreenViewportX=$Width"
+        "FullscreenViewportY=$Height"
+        "StartupFullscreen=$startupFs"
+        "BorderlessFullscreen=$borderless"
+        "CenterBorderlessWindow=$centerBorderless"
+        "UseFullscreenCursorInBorderless=False"
+        "CaptureMouse=$capture"
+    )
+
+    $sectionHeaders = @('^\[WinDrv\.WindowsClient\]', '^\[XDrv\.XClient\]')
+    $rewroteWinDrv = $false
+    foreach ($headerPattern in $sectionHeaders) {
+        $secStart = -1
+        $secEnd = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match $headerPattern) {
+                $secStart = $i
+                $secEnd = $lines.Count
+                for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                    if ($lines[$j] -match '^\[') { $secEnd = $j; break }
+                }
+                break
+            }
+        }
+        if ($secStart -lt 0) { continue }
+
+        for ($i = $secEnd - 1; $i -gt $secStart; $i--) {
+            if ($lines[$i] -match $displayKeyPattern) {
+                $null = $lines.RemoveAt($i)
+            }
+        }
+
+        for ($j = $block.Count - 1; $j -ge 0; $j--) {
+            $lines.Insert($secStart + 1, $block[$j])
+        }
+        if ($headerPattern -match 'WinDrv') { $rewroteWinDrv = $true }
+    }
+
+    # Ensure the engine cache is big enough for fullscreen + co-op state.
+    $inEngine = $false
+    $haveCache = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\[') { $inEngine = $false }
+        if ($lines[$i] -match '^\[Engine\.GameEngine\]') { $inEngine = $true; continue }
+        if (-not $inEngine) { continue }
+        if ($lines[$i] -match '^\s*;?\s*CacheSizeMegs=') {
+            $lines[$i] = "CacheSizeMegs=256"
+            $haveCache = $true
+            $inEngine = $false
+        }
+    }
+    if (-not $haveCache) {
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\[Engine\.GameEngine\]') {
+                $lines.Insert($i + 1, "CacheSizeMegs=256")
                 break
             }
         }
     }
 
+    if (-not $rewroteWinDrv) {
+        throw "Missing [WinDrv.WindowsClient] section in $Path"
+    }
+
     [IO.File]::WriteAllLines($Path, $lines.ToArray(), $enc)
+}
+
+function Reset-GameDisplayIni {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [int]$Width = 1280,
+        [int]$Height = 1024
+    )
+    # Restore M212 stock video defaults: 1280x1024, no borderless, windowed start.
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+
+    $displayKeyPattern = '^\s*;?\s*(WindowedViewportX|WindowedViewportY|FullscreenViewportX|FullscreenViewportY|StartupFullscreen|BorderlessFullscreen|CenterBorderlessWindow|UseFullscreenCursorInBorderless|CaptureMouse)\s*='
+    $block = @(
+        "WindowedViewportX=$Width"
+        "WindowedViewportY=$Height"
+        "FullscreenViewportX=$Width"
+        "FullscreenViewportY=$Height"
+        "StartupFullscreen=False"
+        "BorderlessFullscreen=False"
+        "CenterBorderlessWindow=False"
+        "UseFullscreenCursorInBorderless=False"
+        "CaptureMouse=False"
+    )
+
+    $enc = [Text.Encoding]::Default
+    $lines = [System.Collections.Generic.List[string]]([IO.File]::ReadAllLines($Path, $enc))
+    foreach ($headerPattern in @('^\[WinDrv\.WindowsClient\]', '^\[XDrv\.XClient\]')) {
+        $secStart = -1
+        $secEnd = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match $headerPattern) {
+                $secStart = $i
+                $secEnd = $lines.Count
+                for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                    if ($lines[$j] -match '^\[') { $secEnd = $j; break }
+                }
+                break
+            }
+        }
+        if ($secStart -lt 0) { continue }
+        for ($i = $secEnd - 1; $i -gt $secStart; $i--) {
+            if ($lines[$i] -match $displayKeyPattern) { $null = $lines.RemoveAt($i) }
+        }
+        for ($j = $block.Count - 1; $j -ge 0; $j--) {
+            $lines.Insert($secStart + 1, $block[$j])
+        }
+    }
+    [IO.File]::WriteAllLines($Path, $lines.ToArray(), $enc)
+    Write-Host "Reset video defaults: $Path"
 }
 
 function Apply-PlayerDisplayMode {
@@ -372,14 +524,11 @@ function Start-GameInstance {
         [Parameter(Mandatory = $true)][string]$PlayerId,
         [Parameter(Mandatory = $true)][string]$WindowTitle,
         [string]$Map = "PrivetDr.unr",
-        [ValidateSet("Windowed", "Fullscreen")][string]$DisplayMode = "Windowed"
+        [ValidateSet("Default", "Windowed")][string]$DisplayMode = "Default"
     )
-    if ($DisplayMode -eq "Fullscreen") {
-        $size = Get-PrimaryDisplaySize
-        Write-Host ("[{0}] Fullscreen {1}x{2} (primary display)" -f $PlayerId, $size.Width, $size.Height)
-        Apply-PlayerDisplayMode -GameRoot $GameRoot -PlayerId $PlayerId -Mode Fullscreen -Width $size.Width -Height $size.Height
-    }
-    else {
+    # "Default" = leave the game's own video settings untouched (normal users).
+    # "Windowed" = force two small windows (PlayLocal only).
+    if ($DisplayMode -eq "Windowed") {
         Apply-PlayerDisplayMode -GameRoot $GameRoot -PlayerId $PlayerId -Mode Windowed -Width 960 -Height 540
     }
 
