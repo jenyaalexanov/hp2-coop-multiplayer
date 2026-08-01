@@ -1,6 +1,7 @@
 # Rebuild HGame.u from mod sources and refresh instance hardlinks + dist/.
 
 . "$PSScriptRoot\Common.ps1"
+Require-Administrator -ScriptPath $PSCommandPath -BoundParameters $PSBoundParameters
 
 $repo = Get-RepoRoot
 $gameRoot = Resolve-GamePath

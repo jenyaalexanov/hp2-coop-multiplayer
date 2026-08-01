@@ -65,9 +65,9 @@ To use a different game folder, edit `game_path` in `config.json` and run `Insta
 
 ### Play on one PC (local)
 
-Double-click **`PlayLocal.bat`**.
+Double-click **`PlayLocal.bat`** (accept UAC — needed for the Program Files game folder).
 
-This launches two windowed instances on the map from `config.json` (default `PrivetDr.unr`):
+This launches two **windowed** instances on the map from `config.json` (default `PrivetDr.unr`):
 
 | Instance | Role | Profile |
 |----------|------|---------|
@@ -80,12 +80,14 @@ M212 requires `-NEWWINDOW` for a second instance on one PC (the launchers alread
 
 ### Play on LAN / Internet
 
-**Host PC** — double-click **`Host.bat`**, or:
+**Host PC** — double-click **`Host.bat`** (accept UAC), or:
 
 ```bat
 Host.bat [port] [playerName]
 REM default: port from config.json (7777), name Host
 ```
+
+Launches **fullscreen** at the primary display’s current resolution.
 
 Open **UDP** on that port in Windows Firewall (and router port-forward for Internet). Or use ZeroTier / Radmin VPN and share the VPN IP.
 
@@ -96,7 +98,7 @@ Join.bat <hostIp> [port] [playerName]
 REM example: Join.bat 192.168.1.10 7777 Hermione
 ```
 
-If you run `Join.bat` with no arguments, it will ask for the host IP.
+Also **fullscreen** at the primary display’s resolution. If you run `Join.bat` with no arguments, it will ask for the host IP.
 
 Both players should load the **same map**. The puppet is only shown while maps match. When one player changes map, the other **auto-follows** (a joining client is pulled onto the host's current map).
 

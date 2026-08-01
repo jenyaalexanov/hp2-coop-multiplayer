@@ -1,4 +1,4 @@
-# LAN/Internet host: starts P1 listening on UDP
+# LAN/Internet host: starts P1 listening on UDP (fullscreen, max primary display)
 # Usage: CoopHost.ps1 [port] [playerName]
 
 param(
@@ -7,6 +7,7 @@ param(
 )
 
 . "$PSScriptRoot\Common.ps1"
+Require-Administrator -ScriptPath $PSCommandPath -BoundParameters $PSBoundParameters
 
 $cfg = Load-Config
 $gameRoot = Resolve-GamePath
@@ -25,7 +26,7 @@ Write-CoopIni -Path (Join-Path $docs "HP2Coop.ini") -LastHost "0.0.0.0" -LastPor
 Write-CoopIni -Path (Join-Path $gameRoot "instances\P1\System\HP2Coop.ini") -LastHost "0.0.0.0" -LastPort $portNum -PlayerName $PlayerName -WasHost $true
 
 Clear-RunningLock "P1"
-Start-GameInstance -GameRoot $gameRoot -PlayerId "P1" -WindowTitle "HP2 Coop Host" -Map $map
+Start-GameInstance -GameRoot $gameRoot -PlayerId "P1" -WindowTitle "HP2 Coop Host" -Map $map -DisplayMode Fullscreen
 
 Write-Host "Host listening UDP $portNum. Open firewall for UDP $portNum."
 Write-Host "Friend joins with: Join.bat YOUR_LAN_IP $portNum"

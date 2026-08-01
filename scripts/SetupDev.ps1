@@ -1,6 +1,7 @@
 # Clone developer toolchain into tools/ (gitignored).
 
 . "$PSScriptRoot\Common.ps1"
+Require-Administrator -ScriptPath $PSCommandPath -BoundParameters $PSBoundParameters
 
 $repo = Get-RepoRoot
 $tools = Join-Path $repo "tools"

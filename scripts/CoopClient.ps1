@@ -1,4 +1,4 @@
-# LAN/Internet client: connect to host
+# LAN/Internet client: connect to host (fullscreen, max primary display)
 # Usage: CoopClient.ps1 <hostIp> [port] [playerName]
 
 param(
@@ -8,6 +8,7 @@ param(
 )
 
 . "$PSScriptRoot\Common.ps1"
+Require-Administrator -ScriptPath $PSCommandPath -BoundParameters $PSBoundParameters
 
 if ([string]::IsNullOrWhiteSpace($HostIp)) {
     Write-Host "Usage: Join.bat <hostIp> [port] [playerName]"
@@ -35,6 +36,6 @@ Write-CoopIni -Path (Join-Path $docs "HP2Coop.ini") -LastHost $HostIp -LastPort 
 Write-CoopIni -Path (Join-Path $gameRoot "instances\P2\System\HP2Coop.ini") -LastHost $HostIp -LastPort $portNum -PlayerName $PlayerName -WasHost $false
 
 Clear-RunningLock "P2"
-Start-GameInstance -GameRoot $gameRoot -PlayerId "P2" -WindowTitle "HP2 Coop Client" -Map $map
+Start-GameInstance -GameRoot $gameRoot -PlayerId "P2" -WindowTitle "HP2 Coop Client" -Map $map -DisplayMode Fullscreen
 
 Write-Host "Connecting to ${HostIp}:$portNum as $PlayerName..."

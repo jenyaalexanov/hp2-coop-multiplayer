@@ -141,34 +141,176 @@ function Test-PathWritable([string]$dir) {
     }
 }
 
-function Ensure-GameWriteAccess {
+function Require-Administrator {
     param(
-        [Parameter(Mandatory = $true)][string]$GameRoot,
-        [Parameter(Mandatory = $true)][string]$ScriptPath
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [hashtable]$BoundParameters = @{}
     )
-    $sys = Join-Path $GameRoot "System"
-    if (Test-PathWritable $sys) { return }
+    if (Test-IsAdministrator) { return }
 
-    if (Test-IsAdministrator) {
-        throw "Cannot write to game System folder even as Administrator: $sys"
+    Write-Host "Administrator rights required. A UAC prompt will appear..."
+    $argList = [System.Collections.Generic.List[string]]@(
+        "-NoProfile"
+        "-ExecutionPolicy"
+        "Bypass"
+        "-File"
+        $ScriptPath
+    )
+    foreach ($entry in $BoundParameters.GetEnumerator()) {
+        $name = [string]$entry.Key
+        $val = $entry.Value
+        if ($val -is [System.Management.Automation.SwitchParameter]) {
+            if ($val.IsPresent) { $argList.Add("-$name") }
+            continue
+        }
+        if ($null -eq $val) { continue }
+        $text = [string]$val
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+        $argList.Add("-$name")
+        $argList.Add($text)
     }
 
-    Write-Host ""
-    Write-Host "Administrator rights required to install into:"
-    Write-Host "  $GameRoot"
-    Write-Host "A UAC prompt will appear..."
-    Write-Host ""
-
-    $argList = @(
-        "-NoProfile"
-        "-ExecutionPolicy", "Bypass"
-        "-File", "`"$ScriptPath`""
-    )
-    $proc = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argList -Wait -PassThru
+    try {
+        $proc = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argList.ToArray() -Wait -PassThru
+    }
+    catch {
+        throw "UAC elevation cancelled or failed: $_"
+    }
     if ($null -eq $proc) {
-        throw "Failed to start elevated installer (UAC cancelled?)."
+        throw "Failed to start elevated PowerShell (UAC cancelled?)."
     }
     exit $proc.ExitCode
+}
+
+function Get-PrimaryDisplaySize {
+    Add-Type -AssemblyName System.Windows.Forms
+    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    return @{
+        Width  = [int]$bounds.Width
+        Height = [int]$bounds.Height
+    }
+}
+
+function Set-GameDisplayIni {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string]$UserFolder = "",
+        [ValidateSet("Windowed", "Fullscreen")][string]$Mode = "Windowed",
+        [int]$Width = 960,
+        [int]$Height = 540
+    )
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "INI not found: $Path"
+    }
+
+    $fullscreen = ($Mode -eq "Fullscreen")
+    $startupFs = if ($fullscreen) { "True" } else { "False" }
+    $capture = if ($fullscreen) { "True" } else { "False" }
+
+    $enc = [Text.Encoding]::Default
+    $lines = [System.Collections.Generic.List[string]]([IO.File]::ReadAllLines($Path, $enc))
+    $inWin = $false
+    $inCore = $false
+    $winSectionIdx = -1
+    $have = @{
+        WindowedViewportX                 = $false
+        WindowedViewportY                 = $false
+        FullscreenViewportX               = $false
+        FullscreenViewportY               = $false
+        StartupFullscreen                 = $false
+        BorderlessFullscreen              = $false
+        CenterBorderlessWindow            = $false
+        UseFullscreenCursorInBorderless   = $false
+        CaptureMouse                      = $false
+        UserFolder                        = $false
+        SavePath                          = $false
+    }
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\[') { $inWin = $false; $inCore = $false }
+        if ($lines[$i] -match '^\[WinDrv\.WindowsClient\]') {
+            $inWin = $true
+            $winSectionIdx = $i
+        }
+        if ($lines[$i] -match '^\[Core\.System\]') { $inCore = $true }
+
+        if ($inCore -and $UserFolder -and $lines[$i] -match '^UserFolder=') {
+            $lines[$i] = "UserFolder=$UserFolder"
+            $have.UserFolder = $true
+        }
+        if ($inCore -and $UserFolder -and $lines[$i] -match '^SavePath=') {
+            $lines[$i] = "SavePath=$env:USERPROFILE\Documents\$UserFolder\Save"
+            $have.SavePath = $true
+        }
+
+        if (-not $inWin) { continue }
+
+        if ($lines[$i] -match '^;?\s*WindowedViewportX=') { $lines[$i] = "WindowedViewportX=$Width"; $have.WindowedViewportX = $true }
+        elseif ($lines[$i] -match '^;?\s*WindowedViewportY=') { $lines[$i] = "WindowedViewportY=$Height"; $have.WindowedViewportY = $true }
+        elseif ($lines[$i] -match '^;?\s*FullscreenViewportX=') { $lines[$i] = "FullscreenViewportX=$Width"; $have.FullscreenViewportX = $true }
+        elseif ($lines[$i] -match '^;?\s*FullscreenViewportY=') { $lines[$i] = "FullscreenViewportY=$Height"; $have.FullscreenViewportY = $true }
+        elseif ($lines[$i] -match '^;?\s*StartupFullscreen=') { $lines[$i] = "StartupFullscreen=$startupFs"; $have.StartupFullscreen = $true }
+        elseif ($lines[$i] -match '^;?\s*BorderlessFullscreen=') { $lines[$i] = "BorderlessFullscreen=False"; $have.BorderlessFullscreen = $true }
+        elseif ($lines[$i] -match '^;?\s*CenterBorderlessWindow=') { $lines[$i] = "CenterBorderlessWindow=False"; $have.CenterBorderlessWindow = $true }
+        elseif ($lines[$i] -match '^;?\s*UseFullscreenCursorInBorderless=') { $lines[$i] = "UseFullscreenCursorInBorderless=False"; $have.UseFullscreenCursorInBorderless = $true }
+        elseif ($lines[$i] -match '^;?\s*CaptureMouse=') { $lines[$i] = "CaptureMouse=$capture"; $have.CaptureMouse = $true }
+    }
+
+    if ($winSectionIdx -ge 0) {
+        $insertAt = $winSectionIdx + 1
+        $toInsert = @()
+        if (-not $have.FullscreenViewportX) { $toInsert += "FullscreenViewportX=$Width" }
+        if (-not $have.FullscreenViewportY) { $toInsert += "FullscreenViewportY=$Height" }
+        if (-not $have.WindowedViewportX) { $toInsert += "WindowedViewportX=$Width" }
+        if (-not $have.WindowedViewportY) { $toInsert += "WindowedViewportY=$Height" }
+        if (-not $have.StartupFullscreen) { $toInsert += "StartupFullscreen=$startupFs" }
+        if (-not $have.BorderlessFullscreen) { $toInsert += "BorderlessFullscreen=False" }
+        if (-not $have.CaptureMouse) { $toInsert += "CaptureMouse=$capture" }
+        for ($j = $toInsert.Count - 1; $j -ge 0; $j--) {
+            $lines.Insert($insertAt, $toInsert[$j])
+        }
+    }
+
+    if ($UserFolder -and -not ($lines | Where-Object { $_ -match '^UserFolder=' })) {
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\[Core\.System\]') {
+                $lines.Insert($i + 1, "UserFolder=$UserFolder")
+                break
+            }
+        }
+    }
+
+    [IO.File]::WriteAllLines($Path, $lines.ToArray(), $enc)
+}
+
+function Apply-PlayerDisplayMode {
+    param(
+        [Parameter(Mandatory = $true)][string]$GameRoot,
+        [Parameter(Mandatory = $true)][string]$PlayerId,
+        [ValidateSet("Windowed", "Fullscreen")][string]$Mode = "Windowed",
+        [int]$Width = 960,
+        [int]$Height = 540
+    )
+    $userFolder = "HP2Coop-$PlayerId"
+    $docs = Get-PlayerDocs $PlayerId
+    New-Item -ItemType Directory -Path $docs -Force | Out-Null
+
+    $gameIni = Join-Path $GameRoot "instances\$PlayerId\System\Game.ini"
+    $hpIni = Join-Path $docs "HP.ini"
+    if ((-not (Test-Path -LiteralPath $hpIni)) -and (Test-Path -LiteralPath $gameIni)) {
+        Copy-Item -LiteralPath $gameIni -Destination $hpIni -Force
+    }
+
+    $paths = @(
+        $gameIni,
+        (Join-Path $GameRoot "instances\$PlayerId\System\Default.ini"),
+        $hpIni
+    )
+    foreach ($p in $paths) {
+        if (Test-Path -LiteralPath $p) {
+            Set-GameDisplayIni -Path $p -UserFolder $userFolder -Mode $Mode -Width $Width -Height $Height
+        }
+    }
 }
 
 function Get-PlayerDocs([string]$playerId) {
@@ -229,8 +371,18 @@ function Start-GameInstance {
         [Parameter(Mandatory = $true)][string]$GameRoot,
         [Parameter(Mandatory = $true)][string]$PlayerId,
         [Parameter(Mandatory = $true)][string]$WindowTitle,
-        [string]$Map = "PrivetDr.unr"
+        [string]$Map = "PrivetDr.unr",
+        [ValidateSet("Windowed", "Fullscreen")][string]$DisplayMode = "Windowed"
     )
+    if ($DisplayMode -eq "Fullscreen") {
+        $size = Get-PrimaryDisplaySize
+        Write-Host ("[{0}] Fullscreen {1}x{2} (primary display)" -f $PlayerId, $size.Width, $size.Height)
+        Apply-PlayerDisplayMode -GameRoot $GameRoot -PlayerId $PlayerId -Mode Fullscreen -Width $size.Width -Height $size.Height
+    }
+    else {
+        Apply-PlayerDisplayMode -GameRoot $GameRoot -PlayerId $PlayerId -Mode Windowed -Width 960 -Height 540
+    }
+
     $sys = Join-Path $GameRoot "instances\$PlayerId\System"
     $log = "Game$PlayerId.log"
     Start-Process -FilePath (Join-Path $sys "game.exe") `

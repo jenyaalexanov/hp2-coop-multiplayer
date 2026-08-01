@@ -2,7 +2,6 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-:: Always elevate — default install path is under Program Files (x86).
 net session >nul 2>&1
 if "%errorLevel%"=="0" goto :elevated
 
@@ -15,10 +14,7 @@ echo A UAC prompt will appear — click Yes.
 echo.
 echo Waiting for the elevated installer to finish...
 echo.
-
-:: %~dp0. avoids trailing-backslash quoting bugs in PowerShell strings.
-:: -Wait keeps this window open until the elevated install completes (or UAC is cancelled).
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $p = Start-Process -FilePath '%~f0' -WorkingDirectory '%~dp0.' -Verb RunAs -PassThru -Wait; if ($null -eq $p) { exit 1 }; exit $p.ExitCode } catch { Write-Host $_; exit 1 }"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\RelaunchElevated.ps1" -BatPath "%~f0" -WorkingDirectory "%~dp0." %*
 set "ERR=%ERRORLEVEL%"
 if not "%ERR%"=="0" (
   echo.

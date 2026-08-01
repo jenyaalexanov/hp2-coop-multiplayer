@@ -1,6 +1,7 @@
-# Local co-op: 2 instances auto-connect on 127.0.0.1
+# Local co-op: 2 windowed instances auto-connect on 127.0.0.1
 
 . "$PSScriptRoot\Common.ps1"
+Require-Administrator -ScriptPath $PSCommandPath -BoundParameters $PSBoundParameters
 
 $cfg = Load-Config
 $gameRoot = Resolve-GamePath
@@ -22,9 +23,9 @@ Write-CoopIni -Path (Join-Path $gameRoot "instances\P2\System\HP2Coop.ini") -Las
 Clear-RunningLock "P1"
 Clear-RunningLock "P2"
 
-Start-GameInstance -GameRoot $gameRoot -PlayerId "P1" -WindowTitle "HP2 Coop Host" -Map $map
+Start-GameInstance -GameRoot $gameRoot -PlayerId "P1" -WindowTitle "HP2 Coop Host" -Map $map -DisplayMode Windowed
 Start-Sleep -Seconds 3
-Start-GameInstance -GameRoot $gameRoot -PlayerId "P2" -WindowTitle "HP2 Coop Client" -Map $map
+Start-GameInstance -GameRoot $gameRoot -PlayerId "P2" -WindowTitle "HP2 Coop Client" -Map $map -DisplayMode Windowed
 
-Write-Host "Launched host (P1) + client (P2) on $map"
+Write-Host "Launched host (P1) + client (P2) on $map (windowed)"
 Write-Host "Console: CoopStatus / CoopDebug"

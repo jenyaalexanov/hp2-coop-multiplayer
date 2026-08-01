@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\Common.ps1"
 
 $root = (Resolve-Path -LiteralPath $GameRoot).Path
 $rootSys = Join-Path $root "System"
@@ -65,39 +66,6 @@ Name=Player
         GameIni    = $gameIni
         UserIni    = $userIni
     }
-}
-
-function Set-WindowedIni([string]$path, [string]$userFolder) {
-    if (-not (Test-Path -LiteralPath $path)) {
-        throw "INI not found (sandbox incomplete): $path"
-    }
-    $enc = [Text.Encoding]::Default
-    $lines = [IO.File]::ReadAllLines($path, $enc)
-    $inWin = $false; $inCore = $false
-    for ($i = 0; $i -lt $lines.Length; $i++) {
-        if ($lines[$i] -match '^\[') { $inWin = $false; $inCore = $false }
-        if ($lines[$i] -match '^\[WinDrv\.WindowsClient\]') { $inWin = $true }
-        if ($lines[$i] -match '^\[Core\.System\]') { $inCore = $true }
-        if ($inCore -and $lines[$i] -match '^UserFolder=') { $lines[$i] = "UserFolder=$userFolder" }
-        if ($inCore -and $lines[$i] -match '^SavePath=') { $lines[$i] = "SavePath=$env:USERPROFILE\Documents\$userFolder\Save" }
-        if ($inWin -and $lines[$i] -match '^WindowedViewportX=') { $lines[$i] = 'WindowedViewportX=960' }
-        if ($inWin -and $lines[$i] -match '^WindowedViewportY=') { $lines[$i] = 'WindowedViewportY=540' }
-        if ($inWin -and $lines[$i] -match '^FullscreenViewportX=') { $lines[$i] = 'FullscreenViewportX=960' }
-        if ($inWin -and $lines[$i] -match '^FullscreenViewportY=') { $lines[$i] = 'FullscreenViewportY=540' }
-        if ($inWin -and $lines[$i] -match '^;?\s*StartupFullscreen=') { $lines[$i] = 'StartupFullscreen=False' }
-        if ($inWin -and $lines[$i] -match '^;?\s*BorderlessFullscreen=') { $lines[$i] = 'BorderlessFullscreen=False' }
-        if ($inWin -and $lines[$i] -match '^;?\s*CenterBorderlessWindow=') { $lines[$i] = 'CenterBorderlessWindow=False' }
-        if ($inWin -and $lines[$i] -match '^;?\s*UseFullscreenCursorInBorderless=') { $lines[$i] = 'UseFullscreenCursorInBorderless=False' }
-        if ($inWin -and $lines[$i] -match '^CaptureMouse=') { $lines[$i] = 'CaptureMouse=False' }
-    }
-    if (-not ($lines | Where-Object { $_ -match '^UserFolder=' })) {
-        $list = [System.Collections.Generic.List[string]]$lines
-        for ($i = 0; $i -lt $list.Count; $i++) {
-            if ($list[$i] -match '^\[Core\.System\]') { $list.Insert($i + 1, "UserFolder=$userFolder"); break }
-        }
-        $lines = $list.ToArray()
-    }
-    [IO.File]::WriteAllLines($path, $lines, $enc)
 }
 
 function New-Junction([string]$link, [string]$target) {
@@ -175,8 +143,8 @@ foreach ($p in $players) {
         }
     }
 
-    Set-WindowedIni $instDefaultIni $p.UserFolder
-    Set-WindowedIni $instGameIni $p.UserFolder
+    Set-GameDisplayIni -Path $instDefaultIni -UserFolder $p.UserFolder -Mode Windowed -Width 960 -Height 540
+    Set-GameDisplayIni -Path $instGameIni -UserFolder $p.UserFolder -Mode Windowed -Width 960 -Height 540
 
     $doc = Join-Path $env:USERPROFILE "Documents\$($p.UserFolder)"
     New-Item -ItemType Directory -Path "$doc\Save", "$doc\Logs" -Force | Out-Null
@@ -184,7 +152,7 @@ foreach ($p in $players) {
     if (-not (Test-Path -LiteralPath $hp)) {
         Copy-Item -LiteralPath $instGameIni -Destination $hp -Force
     }
-    Set-WindowedIni $hp $p.UserFolder
+    Set-GameDisplayIni -Path $hp -UserFolder $p.UserFolder -Mode Windowed -Width 960 -Height 540
     $docUser = Join-Path $doc "User.ini"
     if (-not (Test-Path -LiteralPath $docUser)) {
         if (Test-Path -LiteralPath $instUserIni) {

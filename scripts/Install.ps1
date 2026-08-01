@@ -2,6 +2,7 @@
 # No manual steps — elevates via UAC when the game folder is under Program Files.
 
 . "$PSScriptRoot\Common.ps1"
+Require-Administrator -ScriptPath $PSCommandPath -BoundParameters $PSBoundParameters
 
 $repo = Get-RepoRoot
 Write-Host "=== HP2 Co-op Install ==="
@@ -11,14 +12,6 @@ Write-Host ""
 # Silent resolve: default path, or game_path from config.json (no prompt).
 $gameRoot = Resolve-GamePath
 Write-Host "Game: $gameRoot"
-
-if (-not (Test-IsAdministrator)) {
-    throw @"
-Installer is not running as Administrator.
-Program Files installs require elevation (UAC).
-Close this window and run Install.bat — accept the UAC prompt.
-"@
-}
 
 # Extra safety: confirm we can actually write into the game System folder.
 $sysProbe = Join-Path $gameRoot "System"
