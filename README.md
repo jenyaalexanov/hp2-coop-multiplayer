@@ -13,6 +13,19 @@ This repository contains ONLY custom networking/code logic and does NOT include 
 
 ---
 
+⚠️ **Project Status: Work in Progress (v0.1 Early Test Build)**
+
+Please keep in mind that this is an **experimental v0.1 test build**. Many features, synchronization mechanisms, and game mechanics are still incomplete or under active development. You will encounter bugs and missing features!
+
+**About This Project:**
+* **A Childhood Dream:** Adding co-op multiplayer to *Harry Potter and the Chamber of Secrets* has been a personal dream of mine for a very long time — built purely so a friend and I could play through this classic game together.
+* **90% AI-Generated:** Around **90% of the codebase, scripts, and networking logic were created with the assistance of AI**. 
+* **100% Non-Profit:** This project is entirely non-commercial and made for fun out of love for the game.
+
+**Contributions Welcome:** Since this is an open-source passion project, any fixes, PRs, improvements, or technical suggestions from the community are warmly welcomed!
+
+---
+
 ## For players
 
 ### What you need
