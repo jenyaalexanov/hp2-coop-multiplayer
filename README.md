@@ -50,13 +50,16 @@ You do **not** need Python to play — a prebuilt `dist/HGame.u` is included.
 ### Install (one click)
 
 1. Clone or download this repo.
-2. Double-click **`Install.bat`** (accept the UAC prompt — needed to write into Program Files).
+2. Double-click **`Install.bat`** and accept the **UAC** prompt (required — the default game path is under Program Files).
 3. Wait until it finishes. No path typing. It will:
    - Use `C:\Program Files (x86)\Harry Potter\Chamber of Secrets` by default (saved in `config.json`)
+   - Create `Game.ini` / `User.ini` from defaults if this is a fresh install (game has not been launched yet)
    - Back up your original `System\HGame.u` (once) as `HGame.u.bak-hp2coop`
    - Install the co-op package from `dist\HGame.u`
    - Ensure `EditPackages=IpDrv` is listed before `HGame` in `Default.ini`
    - Create soft sandboxes under `instances\P1`, `P2`, `P3` inside your game folder
+
+If UAC is cancelled, install stops with an error (do not run the `.ps1` scripts directly).
 
 To use a different game folder, edit `game_path` in `config.json` and run `Install.bat` again.
 

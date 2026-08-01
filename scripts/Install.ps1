@@ -12,8 +12,19 @@ Write-Host ""
 $gameRoot = Resolve-GamePath
 Write-Host "Game: $gameRoot"
 
-# Fallback if Install.bat was skipped and System is not writable.
-Ensure-GameWriteAccess -GameRoot $gameRoot -ScriptPath $PSCommandPath
+if (-not (Test-IsAdministrator)) {
+    throw @"
+Installer is not running as Administrator.
+Program Files installs require elevation (UAC).
+Close this window and run Install.bat — accept the UAC prompt.
+"@
+}
+
+# Extra safety: confirm we can actually write into the game System folder.
+$sysProbe = Join-Path $gameRoot "System"
+if (-not (Test-PathWritable $sysProbe)) {
+    throw "Cannot write to game System folder: $sysProbe"
+}
 
 if (-not (Test-M212Install $gameRoot)) {
     Write-Host ""
