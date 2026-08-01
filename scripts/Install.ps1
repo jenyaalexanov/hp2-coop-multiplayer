@@ -1,4 +1,5 @@
-# One-click player install: configure game path, deploy HGame.u, patch INI, create sandboxes.
+# One-click player install: use default/configured game path, deploy HGame.u, patch INI, create sandboxes.
+# No manual steps — elevates via UAC when the game folder is under Program Files.
 
 . "$PSScriptRoot\Common.ps1"
 
@@ -7,19 +8,29 @@ Write-Host "=== HP2 Co-op Install ==="
 Write-Host "Repo: $repo"
 Write-Host ""
 
-$gameRoot = Resolve-GamePath -PromptIfMissing
+# Silent resolve: default path, or game_path from config.json (no prompt).
+$gameRoot = Resolve-GamePath
 Write-Host "Game: $gameRoot"
+
+# Fallback if Install.bat was skipped and System is not writable.
+Ensure-GameWriteAccess -GameRoot $gameRoot -ScriptPath $PSCommandPath
 
 if (-not (Test-M212Install $gameRoot)) {
     Write-Host ""
     Write-Host "ERROR: M212 networking files not found (System\IpDrv.u / IpDrv.dll)."
     Write-Host "This mod requires Metallicafan212's M212 Engine/Editor installed into your game folder."
     Write-Host ""
-    Write-Host "Get M212 from the Harry Potter Modding Discord (author forbids redistributing the installer):"
+    Write-Host "Install.bat can deploy the co-op mod automatically, but cannot download M212:"
+    Write-Host "the author forbids redistributing the installer / publishing a direct download link."
+    Write-Host ""
+    Write-Host "Get M212 from the Harry Potter Modding Discord:"
     Write-Host "  https://discord.gg/th3K6Epnug"
     Write-Host "Project info / download pointers:"
     Write-Host "  https://hp-games.net/metallicafan212-s-harry-potter-2-en"
     Write-Host ""
+    Write-Host "Install M212 into:"
+    Write-Host "  $gameRoot"
+    Write-Host "Then re-run Install.bat."
     exit 1
 }
 
@@ -50,6 +61,13 @@ Write-Host ""
 Write-Host "Creating soft sandboxes (instances\P1..P3)..."
 & "$PSScriptRoot\SetupInstances.ps1" -GameRoot $gameRoot
 
+# Persist resolved path so launchers always agree.
+$cfg = Load-Config
+if ([string]$cfg.game_path -ne $gameRoot) {
+    $cfg.game_path = $gameRoot
+    Save-Config $cfg
+}
+
 Write-Host ""
 Write-Host "=== Install complete ==="
 Write-Host ""
@@ -58,4 +76,4 @@ Write-Host "  PlayLocal.bat              - two instances on one PC"
 Write-Host "  Host.bat [port] [name]     - host a LAN/Internet session"
 Write-Host "  Join.bat <ip> [port] [name]- join a host"
 Write-Host ""
-Write-Host "Game path is saved in config.json (edit anytime, then re-run Install.bat)."
+Write-Host "Game path (editable in config.json): $gameRoot"

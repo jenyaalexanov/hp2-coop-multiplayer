@@ -1,7 +1,7 @@
 {
     "default": {
         "source_path": "../../tools/HP2UScriptDecompile/",
-        "out_dir": "C:/Path/To/Harry Potter and the Chamber of Secrets/",
+        "out_dir": "C:/Program Files (x86)/Harry Potter/Chamber of Secrets/",
         "preproc_definitions": {
             "injections": 1,
             "vanilla": 1,

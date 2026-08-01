@@ -3,8 +3,15 @@
 
 $ErrorActionPreference = "Stop"
 
+# Default HP2 install location for all players. Override anytime via config.json.
+$script:DefaultGamePath = 'C:\Program Files (x86)\Harry Potter\Chamber of Secrets'
+
 function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+
+function Get-DefaultGamePath {
+    return $script:DefaultGamePath
 }
 
 function Get-ConfigPath {
@@ -34,6 +41,11 @@ function Load-Config {
     $cfg = $raw | ConvertFrom-Json
     if (-not $cfg.default_map) { $cfg | Add-Member -NotePropertyName default_map -NotePropertyValue "PrivetDr.unr" -Force }
     if (-not $cfg.default_port) { $cfg | Add-Member -NotePropertyName default_port -NotePropertyValue 7777 -Force }
+    $path = [string]$cfg.game_path
+    if ([string]::IsNullOrWhiteSpace($path) -or ($path -match 'Path\\To\\')) {
+        $cfg | Add-Member -NotePropertyName game_path -NotePropertyValue (Get-DefaultGamePath) -Force
+        Save-Config $cfg
+    }
     return $cfg
 }
 
@@ -62,14 +74,34 @@ function Resolve-GamePath {
     )
     $cfg = Load-Config
     $path = [string]$cfg.game_path
+    $defaultPath = Get-DefaultGamePath
+    $dirty = $false
+
+    # Prefer the well-known default install when config path is missing/invalid.
+    if (-not (Test-GameRoot $path) -and (Test-GameRoot $defaultPath)) {
+        if ($path -ne $defaultPath) {
+            Write-Host "Using default game_path: $defaultPath"
+        }
+        $path = $defaultPath
+        $cfg.game_path = $defaultPath
+        $dirty = $true
+    }
 
     if (-not (Test-GameRoot $path)) {
         if (-not $PromptIfMissing) {
             $examplePath = Get-ConfigExamplePath
-            throw "Invalid or missing game_path in config.json. Edit config.json and set game_path to your HP2 + M212 install folder (the folder that contains System\Game.exe), then run Install.bat again. See example: $examplePath"
+            throw @"
+Invalid or missing game_path in config.json.
+Expected HP2 + M212 at:
+  $defaultPath
+Or set game_path in config.json to your install folder (the folder that contains System\Game.exe), then run Install.bat again.
+See example: $examplePath
+"@
         }
 
         Write-Host ""
+        Write-Host "Game not found at default path:"
+        Write-Host "  $defaultPath"
         Write-Host "Enter the full path to your Harry Potter 2 game folder"
         Write-Host "(the folder that contains System\Game.exe, with M212 installed)."
         Write-Host ""
@@ -79,12 +111,64 @@ function Resolve-GamePath {
             throw "Path is not a valid game root (System\Game.exe not found): $entered"
         }
         $cfg.game_path = $entered
-        Save-Config $cfg
         $path = $entered
+        $dirty = $true
         Write-Host "Saved game_path to config.json"
     }
 
+    if ($dirty) {
+        Save-Config $cfg
+    }
+
     return (Resolve-Path -LiteralPath $path).Path
+}
+
+function Test-IsAdministrator {
+    $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Test-PathWritable([string]$dir) {
+    if (-not (Test-Path -LiteralPath $dir)) { return $false }
+    $probe = Join-Path $dir (".hp2coop-write-test-" + [guid]::NewGuid().ToString("n"))
+    try {
+        [IO.File]::WriteAllText($probe, "ok")
+        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Ensure-GameWriteAccess {
+    param(
+        [Parameter(Mandatory = $true)][string]$GameRoot,
+        [Parameter(Mandatory = $true)][string]$ScriptPath
+    )
+    $sys = Join-Path $GameRoot "System"
+    if (Test-PathWritable $sys) { return }
+
+    if (Test-IsAdministrator) {
+        throw "Cannot write to game System folder even as Administrator: $sys"
+    }
+
+    Write-Host ""
+    Write-Host "Administrator rights required to install into:"
+    Write-Host "  $GameRoot"
+    Write-Host "A UAC prompt will appear..."
+    Write-Host ""
+
+    $argList = @(
+        "-NoProfile"
+        "-ExecutionPolicy", "Bypass"
+        "-File", "`"$ScriptPath`""
+    )
+    $proc = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argList -Wait -PassThru
+    if ($null -eq $proc) {
+        throw "Failed to start elevated installer (UAC cancelled?)."
+    }
+    exit $proc.ExitCode
 }
 
 function Get-PlayerDocs([string]$playerId) {

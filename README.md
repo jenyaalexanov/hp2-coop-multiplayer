@@ -37,10 +37,12 @@ Please keep in mind that this is an **experimental v0.1 test build**. Many featu
 ### What you need
 
 1. **Windows 10/11 x64**
-2. Your own copy of **Harry Potter and the Chamber of Secrets** (PC)
+2. Your own copy of **Harry Potter and the Chamber of Secrets** (PC), installed at the default path:
+   `C:\Program Files (x86)\Harry Potter\Chamber of Secrets`
+   (or any path — set `game_path` in `config.json`)
 3. **Metallicafan212 M212 Engine/Editor** installed **into that game folder**
    - Brings `Game.exe` (M212), `UCC.exe`, `IpDrv.dll` / `IpDrv.u`, and modern rendering
-   - The author **forbids redistributing** the installer. Get it from the [Harry Potter Modding Discord](https://discord.gg/th3K6Epnug) or follow the project-info links on [hp-games.net (M212)](https://hp-games.net/metallicafan212-s-harry-potter-2-en)
+   - The author **forbids redistributing** the installer, so `Install.bat` cannot download it for you. Get it from the [Harry Potter Modding Discord](https://discord.gg/th3K6Epnug) or follow the project-info links on [hp-games.net (M212)](https://hp-games.net/metallicafan212-s-harry-potter-2-en)
 4. This repository (clone or download)
 
 You do **not** need Python to play — a prebuilt `dist/HGame.u` is included.
@@ -48,16 +50,15 @@ You do **not** need Python to play — a prebuilt `dist/HGame.u` is included.
 ### Install (one click)
 
 1. Clone or download this repo.
-2. Double-click **`Install.bat`**.
-3. When asked, paste the full path to your game folder (the folder that contains `System\Game.exe`).
-4. Wait until it finishes. It will:
-   - Save the path in `config.json`
+2. Double-click **`Install.bat`** (accept the UAC prompt — needed to write into Program Files).
+3. Wait until it finishes. No path typing. It will:
+   - Use `C:\Program Files (x86)\Harry Potter\Chamber of Secrets` by default (saved in `config.json`)
    - Back up your original `System\HGame.u` (once) as `HGame.u.bak-hp2coop`
-   - Install the co-op package
+   - Install the co-op package from `dist\HGame.u`
    - Ensure `EditPackages=IpDrv` is listed before `HGame` in `Default.ini`
    - Create soft sandboxes under `instances\P1`, `P2`, `P3` inside your game folder
 
-To change the game path later, edit `config.json` and run `Install.bat` again.
+To use a different game folder, edit `game_path` in `config.json` and run `Install.bat` again.
 
 ### Play on one PC (local)
 
@@ -85,7 +86,7 @@ REM default: port from config.json (7777), name Host
 
 Open **UDP** on that port in Windows Firewall (and router port-forward for Internet). Or use ZeroTier / Radmin VPN and share the VPN IP.
 
-**Client PC** — same install (clone + `Install.bat` pointed at their own game copy), then:
+**Client PC** — same install (clone + `Install.bat` on their own game copy), then:
 
 ```bat
 Join.bat <hostIp> [port] [playerName]
@@ -125,7 +126,7 @@ Created from `config.example.json` on first install. **Not committed** (see `.gi
 
 ```json
 {
-  "game_path": "C:\\Path\\To\\Harry Potter and the Chamber of Secrets",
+  "game_path": "C:\\Program Files (x86)\\Harry Potter\\Chamber of Secrets",
   "default_map": "PrivetDr.unr",
   "default_port": 7777
 }
@@ -133,11 +134,11 @@ Created from `config.example.json` on first install. **Not committed** (see `.gi
 
 | Key | Meaning |
 |-----|---------|
-| `game_path` | Your HP2 + M212 install root (contains `System\Game.exe`) |
+| `game_path` | HP2 + M212 install root (contains `System\Game.exe`). Default for everyone: `C:\Program Files (x86)\Harry Potter\Chamber of Secrets` |
 | `default_map` | Map passed to `Game.exe` on launch |
 | `default_port` | Default UDP port for host/client |
 
-All launchers and install/rebuild scripts read this file. There are **no hardcoded `G:\...` paths**.
+All launchers and install/rebuild scripts read this file. Override `game_path` only if your game lives elsewhere.
 
 ### Session config (`Documents\HP2Coop-P*\HP2Coop.ini`)
 
