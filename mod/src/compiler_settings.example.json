@@ -1,0 +1,21 @@
+{
+    "default": {
+        "source_path": "../../tools/HP2UScriptDecompile/",
+        "out_dir": "C:/Path/To/Harry Potter and the Chamber of Secrets/",
+        "preproc_definitions": {
+            "injections": 1,
+            "vanilla": 1,
+            "singleplayer": 1,
+            "package": "HGame",
+            "injectsprefix": "",
+            "allfeatures": false,
+            "PlayerPawn": "harry"
+        },
+        "mods_paths": ["./"],
+        "packages": ["HGame"],
+        "verbose": true,
+        "copy_if_changed": "CoopManager.uc",
+        "run_tests": false,
+        "blacklist": []
+    }
+}
