@@ -540,7 +540,26 @@ function Start-GameInstance {
         -WindowStyle Normal
 }
 
-function Ensure-IpDrvBeforeHGame([string]$iniPath) {
+function Get-M212UserFolder([string]$gameRoot) {
+    $defaultIni = Join-Path $gameRoot "System\Default.ini"
+    if (-not (Test-Path -LiteralPath $defaultIni)) {
+        return "Harry - Coding Evolved"
+    }
+    foreach ($line in [IO.File]::ReadAllLines($defaultIni, [Text.Encoding]::Default)) {
+        if ($line -match '^\s*UserFolder\s*=\s*(.+?)\s*$') {
+            $name = $Matches[1].Trim()
+            if ($name) { return $name }
+        }
+    }
+    return "Harry - Coding Evolved"
+}
+
+function Ensure-IpDrvBeforeHGame {
+    param(
+        [Parameter(Mandatory = $true)][string]$iniPath,
+        # Commented-out lists (typical Game.ini) are not an error.
+        [switch]$Quiet
+    )
     if (-not (Test-Path -LiteralPath $iniPath)) {
         throw "INI not found: $iniPath"
     }
@@ -555,7 +574,9 @@ function Ensure-IpDrvBeforeHGame([string]$iniPath) {
     }
 
     if ($hgIdx -lt 0) {
-        Write-Warning "EditPackages=HGame not found in $iniPath - skipping IpDrv reorder."
+        if (-not $Quiet) {
+            Write-Warning "EditPackages=HGame not found in $iniPath - skipping IpDrv reorder."
+        }
         return $false
     }
 
@@ -580,5 +601,75 @@ function Ensure-IpDrvBeforeHGame([string]$iniPath) {
     if ($changed) {
         [IO.File]::WriteAllLines($iniPath, $lines.ToArray(), $enc)
     }
-    return $changed
+    return $true
+}
+
+# ucc make reads EditPackages from the UserFolder HP.ini (Documents\<UserFolder>\HP.ini),
+# not from System\Default.ini, once that file exists. Patch every ini it might load.
+function Ensure-M212EditPackages([string]$gameRoot) {
+    $sys = Join-Path $gameRoot "System"
+    $defaultIni = Join-Path $sys "Default.ini"
+    if (-not (Test-Path -LiteralPath $defaultIni)) {
+        throw "Missing $defaultIni"
+    }
+
+    $ok = New-Object System.Collections.Generic.List[string]
+    if (-not (Ensure-IpDrvBeforeHGame $defaultIni)) {
+        throw "EditPackages=HGame not found in $defaultIni. Install M212 into this game folder, then run the script again."
+    }
+    $ok.Add((Resolve-Path -LiteralPath $defaultIni).Path)
+
+    $gameIni = Join-Path $sys "Game.ini"
+    if (Test-Path -LiteralPath $gameIni) {
+        $gameFull = (Resolve-Path -LiteralPath $gameIni).Path
+        if ($gameFull.ToLowerInvariant() -ne $ok[0].ToLowerInvariant()) {
+            if (Ensure-IpDrvBeforeHGame $gameIni -Quiet) {
+                $ok.Add($gameFull)
+            }
+        }
+    }
+
+    $userFolder = Get-M212UserFolder $gameRoot
+    $doc = Join-Path $env:USERPROFILE "Documents\$userFolder"
+    $hpIni = Join-Path $doc "HP.ini"
+    if (-not (Test-Path -LiteralPath $hpIni)) {
+        New-Item -ItemType Directory -Path $doc -Force | Out-Null
+        Copy-Item -LiteralPath $defaultIni -Destination $hpIni -Force
+        Write-Host "Created $hpIni from Default.ini (ucc make reads this file)."
+    }
+    if (-not (Ensure-IpDrvBeforeHGame $hpIni)) {
+        throw "EditPackages=HGame not found in $hpIni"
+    }
+    $ok.Add((Resolve-Path -LiteralPath $hpIni).Path)
+
+    Write-Host "EditPackages: IpDrv is listed before HGame in:"
+    foreach ($path in $ok) {
+        Write-Host "  $path"
+    }
+}
+
+# A full decompile copied into the game folder makes ucc rebuild HPModels/HProps/... and fail.
+function Assert-NoDependencySources([string]$gameRoot) {
+    $packages = @(
+        "Core", "Engine", "Editor", "UWindow", "Fire", "UnrealShare",
+        "HPSounds", "HPModels", "HPParticle", "HProps", "IpDrv", "M212Share"
+    )
+    $hits = New-Object System.Collections.Generic.List[string]
+    foreach ($pkg in $packages) {
+        $dir = Join-Path $gameRoot "$pkg\Classes"
+        if (-not (Test-Path -LiteralPath $dir)) { continue }
+        $uc = Get-ChildItem -LiteralPath $dir -Filter *.uc -Recurse -File -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($uc) { $hits.Add($pkg) }
+    }
+    if ($hits.Count -eq 0) { return }
+
+    $list = $hits -join ", "
+    throw @"
+UCC would rebuild dependency packages because their Classes folders are inside the game directory:
+  $list
+under
+  $gameRoot
+Move those folders out of the game directory. Rebuild writes only HGame\Classes; Core, Engine, HPModels, HProps, IpDrv and the rest must stay as the .u files shipped with M212.
+"@
 }

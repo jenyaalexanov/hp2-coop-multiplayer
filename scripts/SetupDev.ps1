@@ -16,28 +16,25 @@ function Assert-Command([string]$name) {
 Assert-Command "git"
 Assert-Command "python"
 
+# Pins match the trees that compiled dist/HGame.u on M212 UCC 469 (Nov 27 2025).
+# HP2UScriptDecompile default branch is Scaling-Patch; master is the stock decompile and is not used.
 $repos = @(
     @{
-        Name = "unrealscript-injector"
-        Url  = "https://github.com/Die4Ever/unrealscript-injector.git"
+        Name   = "unrealscript-injector"
+        Url    = "https://github.com/Die4Ever/unrealscript-injector.git"
+        Commit = "3307ecb5c43be8c9ddf0fdf5958b93c76ef235c0"
     },
     @{
-        Name = "HP2UScriptDecompile"
-        Url  = "https://github.com/metallicafan212/HP2UScriptDecompile.git"
+        Name   = "HP2UScriptDecompile"
+        Url    = "https://github.com/metallicafan212/HP2UScriptDecompile.git"
+        Commit = "d052c5bdb3ed2e232fa0f71d0189880d585b295d"
     }
 )
 
 foreach ($r in $repos) {
     $dest = Join-Path $tools $r.Name
     if (Test-Path -LiteralPath (Join-Path $dest ".git")) {
-        Write-Host "Already cloned: $($r.Name) - pulling..."
-        Push-Location $dest
-        try {
-            git pull --ff-only
-        }
-        finally {
-            Pop-Location
-        }
+        Write-Host "Resetting $($r.Name) to $($r.Commit.Substring(0, 12))..."
     }
     else {
         if (Test-Path -LiteralPath $dest) {
@@ -45,6 +42,33 @@ foreach ($r in $repos) {
         }
         Write-Host "Cloning $($r.Name)..."
         git clone $r.Url $dest
+        if ($LASTEXITCODE -ne 0) {
+            throw "git clone failed for $($r.Name)"
+        }
+    }
+
+    Push-Location $dest
+    try {
+        git fetch origin
+        if ($LASTEXITCODE -ne 0) {
+            throw "git fetch failed for $($r.Name)"
+        }
+        git checkout --force --detach $r.Commit
+        if ($LASTEXITCODE -ne 0) {
+            throw "git checkout $($r.Commit) failed for $($r.Name)"
+        }
+        git clean -fd
+        if ($LASTEXITCODE -ne 0) {
+            throw "git clean failed for $($r.Name)"
+        }
+        $head = (git rev-parse HEAD).Trim()
+        if ($head -ne $r.Commit) {
+            throw "$($r.Name) HEAD is $head, expected $($r.Commit)"
+        }
+        Write-Host "  $($r.Name) @ $head"
+    }
+    finally {
+        Pop-Location
     }
 }
 

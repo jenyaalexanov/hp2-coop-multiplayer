@@ -56,7 +56,7 @@ You do **not** need Python to play — a prebuilt `dist/HGame.u` is included.
    - Create `Game.ini` / `User.ini` from defaults if this is a fresh install (game has not been launched yet)
    - Back up your original `System\HGame.u` (once) as `HGame.u.bak-hp2coop`
    - Install the co-op package from `dist\HGame.u`
-   - Ensure `EditPackages=IpDrv` is listed before `HGame` in `Default.ini`
+   - Ensure `EditPackages=IpDrv` is listed before `HGame` in `Default.ini`, `Game.ini`, and `Documents\<UserFolder>\HP.ini` (`ucc make` reads the user ini)
    - Create soft sandboxes under `instances\P1`, `P2`, `P3` inside your game folder
 
 If UAC is cancelled, install stops with an error (do not run the `.ps1` scripts directly).
@@ -182,9 +182,9 @@ This repo does **not** contain game Maps, Textures, Sounds, or engine binaries. 
 
 1. Run **`Install.bat`** so `game_path` is set and sandboxes exist.
 2. Install **Python 3** and **Git** on PATH.
-3. Double-click **`SetupDev.bat`** — clones into `tools/`:
-   - [Die4Ever/unrealscript-injector](https://github.com/Die4Ever/unrealscript-injector)
-   - [metallicafan212/HP2UScriptDecompile](https://github.com/metallicafan212/HP2UScriptDecompile)
+3. Double-click **`SetupDev.bat`** — clones into `tools/` and checks out the commits that compiled `dist/HGame.u` (it will reset these trees; do not `git pull` them forward):
+   - [Die4Ever/unrealscript-injector](https://github.com/Die4Ever/unrealscript-injector) `3307ecb5c43be8c9ddf0fdf5958b93c76ef235c0`
+   - [metallicafan212/HP2UScriptDecompile](https://github.com/metallicafan212/HP2UScriptDecompile) branch `Scaling-Patch` `d052c5bdb3ed2e232fa0f71d0189880d585b295d`
 
 ### Edit and rebuild
 
@@ -207,7 +207,11 @@ Rebuild.bat
 
 This generates `mod/src/compiler_settings.json` from your `game_path`, runs the injector (`ucc make` via M212), refreshes hardlinks in `instances\P*\System`, and updates `dist/HGame.u`.
 
-`EditPackages=IpDrv` must appear **before** `HGame` in `System\Default.ini` (and in `Documents\Harry - Coding Evolved\HP.ini` if you compile with that UserFolder). `Install.bat` / `Rebuild.bat` patch `Default.ini` for you.
+`dist/HGame.u` was built with M212 UCC **Version 469**, compiled **Nov 27 2025 15:00:29** (`X64-Release`). The first lines of `Documents\<UserFolder>\UCC.log` should match. A different M212 drop will not compile this decompile pin.
+
+`ucc make` reads `EditPackages` from `Documents\<UserFolder>\HP.ini` (`UserFolder` in `System\Default.ini`, usually `Harry - Coding Evolved`), not only from `System\Default.ini`. `CoopLink` extends `IpDrv.UdpLink`, so `EditPackages=IpDrv` must come **before** `HGame`. `Install.bat` / `Rebuild.bat` insert that line into `Default.ini`, `Game.ini` (when the list is active), and the user `HP.ini`.
+
+Do not copy the `HP2UScriptDecompile` package folders into the game directory. The injector writes `HGame\Classes` only. `Core`, `Engine`, `HPModels`, `HProps`, `IpDrv`, and the other dependency packages must stay as the `.u` files shipped with M212. `Rebuild.bat` stops if those `Classes` folders are present.
 
 After rebuilding, stop all `Game.exe` processes (Rebuild does this) before testing.
 

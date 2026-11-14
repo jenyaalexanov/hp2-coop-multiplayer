@@ -21,6 +21,9 @@ if (-not (Test-Path -LiteralPath $decompile)) {
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     throw "Python 3 not found on PATH."
 }
+if (-not (Test-M212Install $gameRoot)) {
+    throw "M212 networking files not found (System\IpDrv.u / IpDrv.dll) under $gameRoot. Install Metallicafan212's M212 Engine/Editor into that folder first."
+}
 
 # Normalize paths for JSON (forward slashes)
 function To-JsonPath([string]$p) {
@@ -44,16 +47,24 @@ Write-Host "Stopping Game.exe..."
 Get-Process -Name "Game" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
-# Ensure IpDrv before HGame for ucc make
-$null = Ensure-IpDrvBeforeHGame (Join-Path $gameRoot "System\Default.ini")
+# ucc make loads EditPackages from Documents\<UserFolder>\HP.ini.
+Ensure-M212EditPackages $gameRoot
+Assert-NoDependencySources $gameRoot
 
-Write-Host "Compiling..."
+Write-Host "Compiling with M212 UCC (dist/HGame.u was built with Version 469, Compiled Nov 27 2025)..."
 Push-Location $modSrc
 try {
     # Injector may wait for Enter on some prompts; feed a newline.
     "" | python $injector --profile default --once
     if ($LASTEXITCODE -ne 0) {
-        throw "Compile failed (exit $LASTEXITCODE)."
+        $userFolder = Get-M212UserFolder $gameRoot
+        $uccLog = Join-Path $env:USERPROFILE "Documents\$userFolder\UCC.log"
+        throw @"
+Compile failed (exit $LASTEXITCODE).
+UCC log: $uccLog
+The build that produced dist/HGame.u used M212 UCC Version 469, Compiled Nov 27 2025 15:00:29 (X64-Release).
+If your log header differs, install that M212 build. CoopLink extends IpDrv.UdpLink, so EditPackages=IpDrv must be before HGame in Documents\$userFolder\HP.ini.
+"@
     }
 }
 finally {

@@ -58,8 +58,7 @@ elseif (Test-Path -LiteralPath $backupU) {
 Copy-Item -LiteralPath $distU -Destination $targetU -Force
 Write-Host "Installed dist\HGame.u -> System\HGame.u"
 
-$defaultIni = Join-Path $sys "Default.ini"
-$null = Ensure-IpDrvBeforeHGame $defaultIni
+Ensure-M212EditPackages $gameRoot
 
 Write-Host ""
 Write-Host "Creating soft sandboxes (instances\P1..P3)..."
