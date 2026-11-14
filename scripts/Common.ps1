@@ -540,18 +540,127 @@ function Start-GameInstance {
         -WindowStyle Normal
 }
 
-function Get-M212UserFolder([string]$gameRoot) {
-    $defaultIni = Join-Path $gameRoot "System\Default.ini"
-    if (-not (Test-Path -LiteralPath $defaultIni)) {
-        return "Harry - Coding Evolved"
-    }
-    foreach ($line in [IO.File]::ReadAllLines($defaultIni, [Text.Encoding]::Default)) {
+function Get-IniUserFolder([string]$iniPath) {
+    if (-not (Test-Path -LiteralPath $iniPath)) { return $null }
+    foreach ($line in [IO.File]::ReadAllLines($iniPath, [Text.Encoding]::Default)) {
         if ($line -match '^\s*UserFolder\s*=\s*(.+?)\s*$') {
             $name = $Matches[1].Trim()
             if ($name) { return $name }
         }
     }
+    return $null
+}
+
+function Get-M212UserFolder([string]$gameRoot) {
+    $name = Get-IniUserFolder (Join-Path $gameRoot "System\Default.ini")
+    if ($name) { return $name }
     return "Harry - Coding Evolved"
+}
+
+# Commits that compiled dist/HGame.u against M212 UCC 469 (Nov 27 2025).
+# HP2UScriptDecompile's default branch is Scaling-Patch. master is the stock decompile and is not used.
+function Get-DevToolchainRepos {
+    return @(
+        @{
+            Name   = "unrealscript-injector"
+            Url    = "https://github.com/Die4Ever/unrealscript-injector.git"
+            Commit = "3307ecb5c43be8c9ddf0fdf5958b93c76ef235c0"
+        },
+        @{
+            Name   = "HP2UScriptDecompile"
+            Url    = "https://github.com/metallicafan212/HP2UScriptDecompile.git"
+            Commit = "d052c5bdb3ed2e232fa0f71d0189880d585b295d"
+        }
+    )
+}
+
+function Test-DevToolchainPinned {
+    $tools = Join-Path (Get-RepoRoot) "tools"
+    foreach ($r in (Get-DevToolchainRepos)) {
+        $dest = Join-Path $tools $r.Name
+        if (-not (Test-Path -LiteralPath (Join-Path $dest ".git"))) { return $false }
+        Push-Location $dest
+        try {
+            $head = (git rev-parse HEAD 2>$null)
+            if ($LASTEXITCODE -ne 0) { return $false }
+            if ($head.Trim() -ne $r.Commit) { return $false }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    $compiler = Join-Path $tools "unrealscript-injector\compiler.py"
+    return (Test-Path -LiteralPath $compiler)
+}
+
+function Sync-DevToolchain {
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        throw "git was not found on PATH. Install Git, then run SetupDev.bat or Rebuild.bat again."
+    }
+    $tools = Join-Path (Get-RepoRoot) "tools"
+    New-Item -ItemType Directory -Path $tools -Force | Out-Null
+
+    foreach ($r in (Get-DevToolchainRepos)) {
+        $dest = Join-Path $tools $r.Name
+        if (Test-Path -LiteralPath (Join-Path $dest ".git")) {
+            Write-Host "Resetting $($r.Name) to $($r.Commit.Substring(0, 12))..."
+        }
+        else {
+            if (Test-Path -LiteralPath $dest) {
+                throw "Path exists but is not a git repo: $dest"
+            }
+            Write-Host "Cloning $($r.Name)..."
+            git clone $r.Url $dest
+            if ($LASTEXITCODE -ne 0) {
+                throw "git clone failed for $($r.Name)"
+            }
+        }
+
+        Push-Location $dest
+        try {
+            git fetch origin
+            if ($LASTEXITCODE -ne 0) {
+                throw "git fetch failed for $($r.Name)"
+            }
+            git checkout --force --detach $r.Commit
+            if ($LASTEXITCODE -ne 0) {
+                throw "git checkout $($r.Commit) failed for $($r.Name)"
+            }
+            git clean -fd
+            if ($LASTEXITCODE -ne 0) {
+                throw "git clean failed for $($r.Name)"
+            }
+            $head = (git rev-parse HEAD).Trim()
+            if ($head -ne $r.Commit) {
+                throw "$($r.Name) HEAD is $head, expected $($r.Commit)"
+            }
+            Write-Host "  $($r.Name) @ $head"
+        }
+        finally {
+            Pop-Location
+        }
+    }
+}
+
+function Assert-M212ScriptPackages([string]$gameRoot) {
+    $need = @(
+        "UCC.exe", "Core.u", "Engine.u", "Editor.u", "UWindow.u", "Fire.u",
+        "UnrealShare.u", "HPSounds.u", "HPModels.u", "HPParticle.u", "HProps.u", "IpDrv.u"
+    )
+    $missing = New-Object System.Collections.Generic.List[string]
+    $sys = Join-Path $gameRoot "System"
+    foreach ($name in $need) {
+        if (-not (Test-Path -LiteralPath (Join-Path $sys $name))) {
+            $missing.Add($name)
+        }
+    }
+    if ($missing.Count -eq 0) { return }
+    $list = $missing -join ", "
+    throw @"
+M212 install is incomplete. These files are missing from ${sys}:
+  $list
+Install Metallicafan212's M212 Engine/Editor into the game folder, then run the script again.
+"@
 }
 
 function Ensure-IpDrvBeforeHGame {
@@ -629,18 +738,38 @@ function Ensure-M212EditPackages([string]$gameRoot) {
         }
     }
 
-    $userFolder = Get-M212UserFolder $gameRoot
-    $doc = Join-Path $env:USERPROFILE "Documents\$userFolder"
-    $hpIni = Join-Path $doc "HP.ini"
-    if (-not (Test-Path -LiteralPath $hpIni)) {
-        New-Item -ItemType Directory -Path $doc -Force | Out-Null
-        Copy-Item -LiteralPath $defaultIni -Destination $hpIni -Force
-        Write-Host "Created $hpIni from Default.ini (ucc make reads this file)."
+    # ucc follows UserFolder from Default.ini. Also patch Game.ini's folder when it differs,
+    # so a sandbox UserFolder on Game.ini cannot hide a stale EditPackages list.
+    $primaryFolder = Get-M212UserFolder $gameRoot
+    $folders = New-Object System.Collections.Generic.List[string]
+    $folders.Add($primaryFolder)
+    if (Test-Path -LiteralPath $gameIni) {
+        $gameFolder = Get-IniUserFolder $gameIni
+        if ($gameFolder -and -not $folders.Contains($gameFolder)) {
+            $folders.Add($gameFolder)
+        }
     }
-    if (-not (Ensure-IpDrvBeforeHGame $hpIni)) {
-        throw "EditPackages=HGame not found in $hpIni"
+
+    foreach ($userFolder in $folders) {
+        $doc = Join-Path $env:USERPROFILE "Documents\$userFolder"
+        $hpIni = Join-Path $doc "HP.ini"
+        $isPrimary = ($userFolder -eq $primaryFolder)
+        if (-not (Test-Path -LiteralPath $hpIni)) {
+            if (-not $isPrimary) { continue }
+            New-Item -ItemType Directory -Path $doc -Force | Out-Null
+            Copy-Item -LiteralPath $defaultIni -Destination $hpIni -Force
+            Write-Host "Created $hpIni from Default.ini (ucc make reads this file)."
+        }
+        $quiet = $false
+        if (-not $isPrimary) { $quiet = $true }
+        if (-not (Ensure-IpDrvBeforeHGame $hpIni -Quiet:$quiet)) {
+            if ($isPrimary) {
+                throw "EditPackages=HGame not found in $hpIni"
+            }
+            continue
+        }
+        $ok.Add((Resolve-Path -LiteralPath $hpIni).Path)
     }
-    $ok.Add((Resolve-Path -LiteralPath $hpIni).Path)
 
     Write-Host "EditPackages: IpDrv is listed before HGame in:"
     foreach ($path in $ok) {

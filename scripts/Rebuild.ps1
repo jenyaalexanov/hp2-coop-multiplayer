@@ -5,25 +5,22 @@ Require-Administrator -ScriptPath $PSCommandPath -BoundParameters $PSBoundParame
 
 $repo = Get-RepoRoot
 $gameRoot = Resolve-GamePath
-$tools = Join-Path $repo "tools"
-$injector = Join-Path $tools "unrealscript-injector\compiler.py"
-$decompile = Join-Path $tools "HP2UScriptDecompile"
 $modSrc = Join-Path $repo "mod\src"
 $settingsExample = Join-Path $modSrc "compiler_settings.example.json"
 $settingsOut = Join-Path $modSrc "compiler_settings.json"
 
-if (-not (Test-Path -LiteralPath $injector)) {
-    throw "Missing $injector`nRun SetupDev.bat first."
-}
-if (-not (Test-Path -LiteralPath $decompile)) {
-    throw "Missing $decompile`nRun SetupDev.bat first."
-}
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    throw "Python 3 not found on PATH."
+    throw "Python 3 not found on PATH. Install Python 3, then run Rebuild.bat again."
 }
-if (-not (Test-M212Install $gameRoot)) {
-    throw "M212 networking files not found (System\IpDrv.u / IpDrv.dll) under $gameRoot. Install Metallicafan212's M212 Engine/Editor into that folder first."
+Assert-M212ScriptPackages $gameRoot
+if (-not (Test-DevToolchainPinned)) {
+    Write-Host "Dev toolchain is missing or not on the pinned commits. Cloning..."
+    Sync-DevToolchain
 }
+
+$tools = Join-Path $repo "tools"
+$injector = Join-Path $tools "unrealscript-injector\compiler.py"
+$decompile = Join-Path $tools "HP2UScriptDecompile"
 
 # Normalize paths for JSON (forward slashes)
 function To-JsonPath([string]$p) {
@@ -46,6 +43,13 @@ Write-Host "  out_dir     = $outDirPath"
 Write-Host "Stopping Game.exe..."
 Get-Process -Name "Game" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
+
+$stockU = Join-Path $gameRoot "System\HGame.u"
+$backupU = Join-Path $gameRoot "System\HGame.u.bak-hp2coop"
+if ((Test-Path -LiteralPath $stockU) -and -not (Test-Path -LiteralPath $backupU)) {
+    Copy-Item -LiteralPath $stockU -Destination $backupU -Force
+    Write-Host "Backed up System\HGame.u -> HGame.u.bak-hp2coop"
+}
 
 # ucc make loads EditPackages from Documents\<UserFolder>\HP.ini.
 Ensure-M212EditPackages $gameRoot
@@ -81,6 +85,12 @@ if (-not (Test-Path -LiteralPath $built)) {
     else {
         throw "Missing System\HGame.u after compile."
     }
+}
+
+$p1Exe = Join-Path $gameRoot "instances\P1\System\game.exe"
+if (-not (Test-Path -LiteralPath $p1Exe)) {
+    Write-Host "Sandboxes missing. Creating instances\P1..P3..."
+    & "$PSScriptRoot\SetupInstances.ps1" -GameRoot $gameRoot
 }
 
 Write-Host "Relinking into instances..."

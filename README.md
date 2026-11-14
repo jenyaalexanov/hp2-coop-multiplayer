@@ -180,9 +180,8 @@ This repo does **not** contain game Maps, Textures, Sounds, or engine binaries. 
 
 ### One-time toolchain setup
 
-1. Run **`Install.bat`** so `game_path` is set and sandboxes exist.
-2. Install **Python 3** and **Git** on PATH.
-3. Double-click **`SetupDev.bat`** — clones into `tools/` and checks out the commits that compiled `dist/HGame.u` (it will reset these trees; do not `git pull` them forward):
+1. Install **Python 3** and **Git** on PATH.
+2. Double-click **`Rebuild.bat`**. It clones `tools/` if needed, checks out the commits below, patches `EditPackages`, compiles, and creates `instances\P1..P3` if they are missing. **`SetupDev.bat`** does only the clone step. Either script resets these trees to the pins (do not `git pull` them forward):
    - [Die4Ever/unrealscript-injector](https://github.com/Die4Ever/unrealscript-injector) `3307ecb5c43be8c9ddf0fdf5958b93c76ef235c0`
    - [metallicafan212/HP2UScriptDecompile](https://github.com/metallicafan212/HP2UScriptDecompile) branch `Scaling-Patch` `d052c5bdb3ed2e232fa0f71d0189880d585b295d`
 
